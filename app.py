@@ -5,19 +5,10 @@ from PIL import Image
 import cv2
 import numpy as np
 import re
-
-
-# ============================================================
-# TESSERACT
-# ============================================================
-
-pytesseract.pytesseract.tesseract_cmd = (
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-)
-
+import shutil
 
 # ============================================================
-# PAGE
+# PAGE CONFIGURATION
 # ============================================================
 
 st.set_page_config(
@@ -34,6 +25,15 @@ st.write(
     "components, values and connections."
 )
 
+# ============================================================
+# TESSERACT OCR SETUP
+# Works on Streamlit Cloud and local system
+# ============================================================
+
+tesseract_path = shutil.which("tesseract")
+
+if tesseract_path:
+    pytesseract.pytesseract.tesseract_cmd = tesseract_path
 
 # ============================================================
 # OCR PREPROCESSING
@@ -41,33 +41,28 @@ st.write(
 
 def prepare_ocr_images(image):
 
-    img = np.array(image)
+    img = np.array(image.convert("RGB"))
 
     gray = cv2.cvtColor(
         img,
         cv2.COLOR_RGB2GRAY
     )
 
-    # Upscale
     enlarged = cv2.resize(
         gray,
         None,
-        fx=5,
-        fy=5,
+        fx=3,
+        fy=3,
         interpolation=cv2.INTER_CUBIC
     )
 
-    # Improve contrast
     clahe = cv2.createCLAHE(
         clipLimit=2.0,
         tileGridSize=(8, 8)
     )
 
-    enhanced = clahe.apply(
-        enlarged
-    )
+    enhanced = clahe.apply(enlarged)
 
-    # Threshold
     otsu = cv2.threshold(
         enhanced,
         0,
@@ -111,9 +106,7 @@ def perform_ocr(images):
                     output_type=Output.DICT
                 )
 
-                for i in range(
-                    len(data["text"])
-                ):
+                for i in range(len(data["text"])):
 
                     word = data["text"][i].strip()
 
@@ -124,7 +117,7 @@ def perform_ocr(images):
                         confidence = float(
                             data["conf"][i]
                         )
-                    except:
+                    except (ValueError, TypeError):
                         confidence = 0
 
                     if confidence < 25:
@@ -135,26 +128,24 @@ def perform_ocr(images):
                         "confidence": confidence
                     })
 
-            except:
-                pass
+            except Exception:
+                continue
 
     return detected_words
 
 
 # ============================================================
-# OCR NORMALIZATION
+# TEXT NORMALIZATION
 # ============================================================
 
 def normalize_text(text):
 
-    text = text.upper()
+    text = str(text).upper()
 
     text = text.replace(
         "µ",
         "U"
-    )
-
-    text = text.replace(
+    ).replace(
         "μ",
         "U"
     )
@@ -175,12 +166,19 @@ def normalize_text(text):
 def detect_labels(words):
 
     components = {
+
         "LED": set(),
+
         "RESISTOR": set(),
+
         "CAPACITOR": set(),
+
         "DIODE": set(),
+
         "TRANSISTOR": set(),
+
         "GROUND": set(),
+
         "VOLTAGE_SOURCE": set()
     }
 
@@ -190,110 +188,75 @@ def detect_labels(words):
 
         confidence = item["confidence"]
 
-        word = normalize_text(
-            raw
-        )
+        word = normalize_text(raw)
 
-        # ----------------------------------------------------
         # LED
-        # ----------------------------------------------------
-
-        if re.fullmatch(
-            r"LED[0-9]*",
-            word
+        if (
+            re.fullmatch(
+                r"LED[0-9]*",
+                word
+            )
+            and confidence >= 30
         ):
+            components["LED"].add(word)
 
-            if confidence >= 30:
-                components["LED"].add(
-                    word
-                )
-
-        # ----------------------------------------------------
-        # RESISTOR
-        # ----------------------------------------------------
-
-        if re.fullmatch(
-            r"R[0-9]+",
-            word
+        # Resistor
+        if (
+            re.fullmatch(
+                r"R[0-9]+",
+                word
+            )
+            and confidence >= 30
         ):
+            components["RESISTOR"].add(word)
 
-            if confidence >= 30:
-                components["RESISTOR"].add(
-                    word
-                )
-
-        # ----------------------------------------------------
-        # CAPACITOR
-        # ----------------------------------------------------
-
-        if re.fullmatch(
-            r"C[0-9]+",
-            word
+        # Capacitor
+        if (
+            re.fullmatch(
+                r"C[0-9]+",
+                word
+            )
+            and confidence >= 30
         ):
+            components["CAPACITOR"].add(word)
 
-            if confidence >= 30:
-                components["CAPACITOR"].add(
-                    word
-                )
-
-        # ----------------------------------------------------
-        # DIODE
-        # ----------------------------------------------------
-
-        if re.fullmatch(
-            r"D[0-9]+",
-            word
+        # Diode
+        if (
+            re.fullmatch(
+                r"D[0-9]+",
+                word
+            )
+            and confidence >= 30
         ):
+            components["DIODE"].add(word)
 
-            if confidence >= 30:
-                components["DIODE"].add(
-                    word
-                )
-
-        # ----------------------------------------------------
-        # TRANSISTOR
-        # ----------------------------------------------------
-
-        if re.fullmatch(
-            r"Q[0-9]+",
-            word
+        # Transistor
+        if (
+            re.fullmatch(
+                r"Q[0-9]+",
+                word
+            )
+            and confidence >= 30
         ):
+            components["TRANSISTOR"].add(word)
 
-            if confidence >= 30:
-                components["TRANSISTOR"].add(
-                    word
-                )
-
-        # ----------------------------------------------------
-        # GND
-        # ----------------------------------------------------
-
+        # Ground
         if word in [
             "GND",
             "GROUND",
             "GNO"
         ]:
+            components["GROUND"].add("GND")
 
-            components["GROUND"].add(
-                "GND"
+        # Voltage source
+        if (
+            re.fullmatch(
+                r"[0-9]+(?:\.[0-9]+)?V",
+                word
             )
-
-        # ----------------------------------------------------
-        # VOLTAGE
-        # ----------------------------------------------------
-
-        if re.fullmatch(
-            r"[0-9]+(?:\.[0-9]+)?V",
-            word
+            and confidence >= 30
         ):
-
-            if confidence >= 30:
-
-                components[
-                    "VOLTAGE_SOURCE"
-                ].add(
-                    word
-                )
+            components["VOLTAGE_SOURCE"].add(word)
 
     return components
 
@@ -305,7 +268,9 @@ def detect_labels(words):
 def detect_values(words):
 
     voltage = set()
+
     resistance = set()
+
     capacitance = set()
 
     for item in words:
@@ -319,52 +284,37 @@ def detect_values(words):
         if confidence < 30:
             continue
 
-        # ----------------------------------------------------
-        # VOLTAGE
-        # ----------------------------------------------------
-
+        # Voltage
         voltage_matches = re.findall(
             r"[0-9]+(?:\.[0-9]+)?V",
             word
         )
 
-        for value in voltage_matches:
+        voltage.update(
+            voltage_matches
+        )
 
-            voltage.add(
-                value
-            )
-
-        # ----------------------------------------------------
-        # RESISTANCE
-        # ----------------------------------------------------
-
+        # Resistance
         resistance_matches = re.findall(
             r"[0-9]+(?:\.[0-9]+)?"
             r"(?:OHM|OHMS|KOHM|KOHMS|MEGOHM|MEGOHMS|K|M)",
             word
         )
 
-        for value in resistance_matches:
+        resistance.update(
+            resistance_matches
+        )
 
-            resistance.add(
-                value
-            )
-
-        # ----------------------------------------------------
-        # CAPACITANCE
-        # ----------------------------------------------------
-
+        # Capacitance
         capacitance_matches = re.findall(
             r"[0-9]+(?:\.[0-9]+)?"
             r"(?:UF|NF|PF)",
             word
         )
 
-        for value in capacitance_matches:
-
-            capacitance.add(
-                value
-            )
+        capacitance.update(
+            capacitance_matches
+        )
 
     return (
         sorted(voltage),
@@ -374,19 +324,21 @@ def detect_values(words):
 
 
 # ============================================================
-# OPENCV - DETECT CIRCUIT LINES
+# WIRE DETECTION
+# SAFE VERSION
 # ============================================================
 
 def detect_wires(image):
 
-    img = np.array(image)
+    img = np.array(
+        image.convert("RGB")
+    )
 
     gray = cv2.cvtColor(
         img,
         cv2.COLOR_RGB2GRAY
     )
 
-    # Slightly blur
     gray = cv2.GaussianBlur(
         gray,
         (3, 3),
@@ -409,13 +361,29 @@ def detect_wires(image):
     )
 
     horizontal = 0
+
     vertical = 0
 
-    if lines is not None:
+    # No lines detected
+    if lines is None:
+        return horizontal, vertical
 
-        for line in lines:
+    # Safely process every detected line
+    for line in lines:
 
-            x1, y1, x2, y2 = line[0]
+        try:
+
+            coords = np.asarray(
+                line
+            ).reshape(-1)
+
+            if coords.size != 4:
+                continue
+
+            x1, y1, x2, y2 = map(
+                int,
+                coords
+            )
 
             dx = abs(
                 x2 - x1
@@ -425,41 +393,49 @@ def detect_wires(image):
                 y2 - y1
             )
 
-            # Horizontal
+            # Horizontal line
             if dx > 40 and dy < 8:
 
                 horizontal += 1
 
-            # Vertical
+            # Vertical line
             elif dy > 40 and dx < 8:
 
                 vertical += 1
+
+        except (
+            ValueError,
+            TypeError,
+            IndexError
+        ):
+            continue
 
     return horizontal, vertical
 
 
 # ============================================================
-# OPENCV - SHAPE ANALYSIS
+# SHAPE ANALYSIS
 # ============================================================
 
 def analyze_shapes(image):
 
-    img = np.array(image)
+    img = np.array(
+        image.convert("RGB")
+    )
 
     gray = cv2.cvtColor(
         img,
         cv2.COLOR_RGB2GRAY
     )
 
-    # Threshold
     binary = cv2.threshold(
         gray,
         0,
         255,
-        cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        cv2.THRESH_BINARY_INV
+        + cv2.THRESH_OTSU
     )[1]
 
-    # Remove tiny noise
     kernel = np.ones(
         (2, 2),
         np.uint8
@@ -478,7 +454,9 @@ def analyze_shapes(image):
     )
 
     large_objects = 0
+
     rectangular_objects = 0
+
     elongated_objects = 0
 
     for contour in contours:
@@ -500,30 +478,39 @@ def analyze_shapes(image):
 
         if w > 5 and h > 5:
 
-            ratio = max(w, h) / min(w, h)
+            ratio = (
+                max(w, h)
+                / min(w, h)
+            )
 
             if ratio > 3:
 
                 elongated_objects += 1
 
-            elif ratio < 3:
+            else:
 
                 rectangular_objects += 1
 
     return {
-        "large_objects": large_objects,
-        "rectangular_objects": rectangular_objects,
-        "elongated_objects": elongated_objects
+
+        "large_objects":
+            large_objects,
+
+        "rectangular_objects":
+            rectangular_objects,
+
+        "elongated_objects":
+            elongated_objects
     }
 
 
 # ============================================================
-# SAFE RESISTANCE CONVERSION
+# RESISTANCE TO OHMS
 # ============================================================
 
 def resistance_to_ohms(value):
 
-    value = value.upper()
+    value = str(value).upper()
 
     number_match = re.search(
         r"[0-9]+(?:\.[0-9]+)?",
@@ -537,33 +524,25 @@ def resistance_to_ohms(value):
         number_match.group()
     )
 
-    if "MEGOHM" in value:
-
-        number *= 1000000
-
-    elif "KOHM" in value:
-
-        number *= 1000
-
-    elif re.search(
-        r"[0-9]+K$",
-        value
+    if (
+        "MEGOHM" in value
+        or value.endswith("M")
     ):
 
-        number *= 1000
+        number *= 1_000_000
 
-    elif re.search(
-        r"[0-9]+M$",
-        value
+    elif (
+        "KOHM" in value
+        or value.endswith("K")
     ):
 
-        number *= 1000000
+        number *= 1_000
 
     return number
 
 
 # ============================================================
-# MAIN
+# FILE UPLOAD
 # ============================================================
 
 uploaded_file = st.file_uploader(
@@ -576,16 +555,33 @@ uploaded_file = st.file_uploader(
 )
 
 
+# ============================================================
+# MAIN PROGRAM
+# ============================================================
+
 if uploaded_file:
 
-    image = Image.open(
-        uploaded_file
-    ).convert("RGB")
+    # --------------------------------------------------------
+    # OPEN IMAGE
+    # --------------------------------------------------------
 
+    try:
 
-    # ========================================================
-    # IMAGE
-    # ========================================================
+        image = Image.open(
+            uploaded_file
+        ).convert("RGB")
+
+    except Exception as error:
+
+        st.error(
+            f"Could not open the image: {error}"
+        )
+
+        st.stop()
+
+    # --------------------------------------------------------
+    # DISPLAY IMAGE
+    # --------------------------------------------------------
 
     st.divider()
 
@@ -598,10 +594,9 @@ if uploaded_file:
         use_container_width=True
     )
 
-
-    # ========================================================
+    # --------------------------------------------------------
     # OCR
-    # ========================================================
+    # --------------------------------------------------------
 
     with st.spinner(
         "🤖 Reading circuit labels..."
@@ -615,10 +610,9 @@ if uploaded_file:
             ocr_images
         )
 
-
-    # ========================================================
-    # OCR TEXT
-    # ========================================================
+    # --------------------------------------------------------
+    # OCR RESULT
+    # --------------------------------------------------------
 
     unique_text = []
 
@@ -626,7 +620,10 @@ if uploaded_file:
 
         word = item["text"].strip()
 
-        if word and word not in unique_text:
+        if (
+            word
+            and word not in unique_text
+        ):
 
             unique_text.append(
                 word
@@ -635,7 +632,6 @@ if uploaded_file:
     final_ocr_text = "\n".join(
         unique_text
     )
-
 
     st.divider()
 
@@ -656,22 +652,18 @@ if uploaded_file:
     else:
 
         st.warning(
-            "No readable text detected."
+            "No readable text detected. "
+            "The image can still be analysed "
+            "using computer vision."
         )
 
-
-    # ========================================================
-    # COMPONENT LABELS
-    # ========================================================
+    # --------------------------------------------------------
+    # COMPONENT DETECTION
+    # --------------------------------------------------------
 
     components = detect_labels(
         ocr_words
     )
-
-
-    # ========================================================
-    # VALUES
-    # ========================================================
 
     (
         voltage_values,
@@ -681,10 +673,9 @@ if uploaded_file:
         ocr_words
     )
 
-
-    # ========================================================
+    # --------------------------------------------------------
     # COMPUTER VISION
-    # ========================================================
+    # --------------------------------------------------------
 
     with st.spinner(
         "👁️ Analysing circuit structure..."
@@ -698,10 +689,9 @@ if uploaded_file:
             image
         )
 
-
-    # ========================================================
-    # COMPONENTS
-    # ========================================================
+    # --------------------------------------------------------
+    # DETECTED COMPONENTS
+    # --------------------------------------------------------
 
     st.divider()
 
@@ -711,99 +701,50 @@ if uploaded_file:
 
     found = False
 
+    display_names = {
 
-    if components["LED"]:
+        "LED":
+            "💡 LED",
 
-        found = True
+        "RESISTOR":
+            "🔩 Resistor",
 
-        for item in sorted(
-            components["LED"]
-        ):
+        "CAPACITOR":
+            "🔋 Capacitor",
 
-            st.write(
-                "💡 LED →",
-                item
-            )
+        "DIODE":
+            "➡️ Diode",
 
+        "TRANSISTOR":
+            "🔺 Transistor",
 
-    if components["RESISTOR"]:
+        "GROUND":
+            "🌍 Ground",
 
-        found = True
+        "VOLTAGE_SOURCE":
+            "⚡ Voltage Source"
+    }
 
-        for item in sorted(
-            components["RESISTOR"]
-        ):
+    for category, items in components.items():
 
-            st.write(
-                "🔩 Resistor →",
-                item
-            )
-
-
-    if components["CAPACITOR"]:
+        if not items:
+            continue
 
         found = True
 
-        for item in sorted(
-            components["CAPACITOR"]
-        ):
+        for item in sorted(items):
 
-            st.write(
-                "🔋 Capacitor →",
-                item
-            )
+            if category == "GROUND":
 
+                st.write(
+                    f"{display_names[category]} → GND"
+                )
 
-    if components["DIODE"]:
+            else:
 
-        found = True
-
-        for item in sorted(
-            components["DIODE"]
-        ):
-
-            st.write(
-                "➡️ Diode →",
-                item
-            )
-
-
-    if components["TRANSISTOR"]:
-
-        found = True
-
-        for item in sorted(
-            components["TRANSISTOR"]
-        ):
-
-            st.write(
-                "🔺 Transistor →",
-                item
-            )
-
-
-    if components["GROUND"]:
-
-        found = True
-
-        st.write(
-            "🌍 Ground → GND"
-        )
-
-
-    if components["VOLTAGE_SOURCE"]:
-
-        found = True
-
-        for item in sorted(
-            components["VOLTAGE_SOURCE"]
-        ):
-
-            st.write(
-                "⚡ Voltage Source →",
-                item
-            )
-
+                st.write(
+                    f"{display_names[category]} → {item}"
+                )
 
     if not found:
 
@@ -811,15 +752,13 @@ if uploaded_file:
             "No reliable component labels detected."
         )
 
-
-    # ========================================================
-    # VALUES
-    # ========================================================
+    # --------------------------------------------------------
+    # DETECTED VALUES
+    # --------------------------------------------------------
 
     st.header(
         "📊 Detected Values"
     )
-
 
     if voltage_values:
 
@@ -830,7 +769,6 @@ if uploaded_file:
             )
         )
 
-
     if resistance_values:
 
         st.write(
@@ -840,7 +778,6 @@ if uploaded_file:
             )
         )
 
-
     if capacitance_values:
 
         st.write(
@@ -849,7 +786,6 @@ if uploaded_file:
                 capacitance_values
             )
         )
-
 
     if not (
         voltage_values
@@ -861,17 +797,15 @@ if uploaded_file:
             "No reliable electrical values detected."
         )
 
-
-    # ========================================================
+    # --------------------------------------------------------
     # CIRCUIT STRUCTURE
-    # ========================================================
+    # --------------------------------------------------------
 
     st.divider()
 
     st.header(
         "🔌 Circuit Structure"
     )
-
 
     if horizontal_wires > 0:
 
@@ -886,7 +820,6 @@ if uploaded_file:
             f"│ Vertical wire segments: "
             f"{vertical_wires}"
         )
-
 
     if (
         horizontal_wires > 0
@@ -903,10 +836,9 @@ if uploaded_file:
             "No strong wire structure detected."
         )
 
-
-    # ========================================================
+    # --------------------------------------------------------
     # SHAPE INFORMATION
-    # ========================================================
+    # --------------------------------------------------------
 
     st.header(
         "👁️ Visual Structure Analysis"
@@ -927,17 +859,15 @@ if uploaded_file:
         shape_info["elongated_objects"]
     )
 
-
-    # ========================================================
+    # --------------------------------------------------------
     # CIRCUIT ANALYSIS
-    # ========================================================
+    # --------------------------------------------------------
 
     st.divider()
 
     st.header(
         "🧠 Circuit Analysis"
     )
-
 
     has_led = bool(
         components["LED"]
@@ -955,20 +885,22 @@ if uploaded_file:
         voltage_values
     )
 
-
-    if has_led and has_resistor:
+    if (
+        has_led
+        and has_resistor
+    ):
 
         st.success(
             "💡 LED + resistor detected. "
-            "The resistor can limit the current flowing "
-            "through the LED."
+            "The resistor can limit the current "
+            "flowing through the LED."
         )
 
     elif has_led:
 
         st.warning(
-            "💡 LED detected, but no reliable resistor "
-            "label was found."
+            "💡 LED detected, but no reliable "
+            "resistor label was found."
         )
 
     elif has_resistor:
@@ -976,7 +908,6 @@ if uploaded_file:
         st.info(
             "🔩 Resistor detected."
         )
-
 
     if has_voltage:
 
@@ -987,22 +918,19 @@ if uploaded_file:
             )
         )
 
-
     if has_ground:
 
         st.info(
             "🌍 Ground connection detected."
         )
 
-
-    # ========================================================
-    # OHM'S LAW
-    # ========================================================
+    # --------------------------------------------------------
+    # OHM'S LAW CALCULATION
+    # --------------------------------------------------------
 
     st.header(
         "⚡ Electrical Calculation"
     )
-
 
     if (
         voltage_values
@@ -1011,11 +939,19 @@ if uploaded_file:
 
         try:
 
+            voltage_match = re.search(
+                r"[0-9]+(?:\.[0-9]+)?",
+                voltage_values[0]
+            )
+
+            if not voltage_match:
+
+                raise ValueError(
+                    "Invalid voltage"
+                )
+
             voltage_number = float(
-                re.search(
-                    r"[0-9]+(?:\.[0-9]+)?",
-                    voltage_values[0]
-                ).group()
+                voltage_match.group()
             )
 
             resistance_number = (
@@ -1024,26 +960,33 @@ if uploaded_file:
                 )
             )
 
-            if resistance_number:
+            if (
+                resistance_number
+                and resistance_number > 0
+            ):
 
                 current = (
-                    voltage_number /
-                    resistance_number
+                    voltage_number
+                    / resistance_number
                 )
 
                 st.success(
-                    f"Voltage = {voltage_number} V\n\n"
-                    f"Resistance = {resistance_number} Ω\n\n"
-                    f"Current = {current:.6f} A"
+                    f"Voltage = "
+                    f"{voltage_number} V\n\n"
+                    f"Resistance = "
+                    f"{resistance_number:g} Ω\n\n"
+                    f"Current = "
+                    f"{current:.6f} A"
                 )
 
             else:
 
                 st.info(
-                    "Resistance value could not be interpreted."
+                    "Resistance value could "
+                    "not be interpreted."
                 )
 
-        except:
+        except Exception:
 
             st.info(
                 "Could not calculate current."
@@ -1052,14 +995,13 @@ if uploaded_file:
     else:
 
         st.info(
-            "Voltage and resistance values are needed "
-            "for current calculation."
+            "Voltage and resistance values "
+            "are needed for current calculation."
         )
 
-
-    # ========================================================
+    # --------------------------------------------------------
     # RECOMMENDATION
-    # ========================================================
+    # --------------------------------------------------------
 
     st.divider()
 
@@ -1067,25 +1009,30 @@ if uploaded_file:
         "💡 Circuit Recommendation"
     )
 
-
-    if has_led and has_resistor:
+    if (
+        has_led
+        and has_resistor
+    ):
 
         st.success(
-            "✅ The circuit contains an LED and a resistor. "
-            "The resistor provides current limiting."
+            "✅ The circuit contains an LED "
+            "and a resistor. The resistor "
+            "provides current limiting."
         )
 
     elif has_led:
 
         st.warning(
-            "⚠️ LED detected without a reliably detected "
-            "resistor label. Check the circuit manually."
+            "⚠️ LED detected without a reliably "
+            "detected resistor label. "
+            "Check the circuit manually."
         )
 
     elif has_resistor:
 
         st.info(
-            "ℹ️ Resistor detected. Verify its resistance value."
+            "ℹ️ Resistor detected. "
+            "Verify its resistance value."
         )
 
     else:
@@ -1095,10 +1042,9 @@ if uploaded_file:
             "for stronger analysis."
         )
 
-
-    # ========================================================
-    # FINAL
-    # ========================================================
+    # --------------------------------------------------------
+    # FINAL MESSAGE
+    # --------------------------------------------------------
 
     st.divider()
 
@@ -1107,8 +1053,9 @@ if uploaded_file:
     )
 
     st.caption(
-        "CircuitLens AI combines OCR and OpenCV-based "
-        "visual analysis. OCR identifies readable labels "
-        "and values, while OpenCV analyses circuit structure "
-        "such as lines and shapes."
+        "CircuitLens AI combines OCR and "
+        "OpenCV-based visual analysis. "
+        "OCR identifies readable labels and "
+        "values, while OpenCV analyses circuit "
+        "structure such as lines and shapes."
     )
