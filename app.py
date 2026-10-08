@@ -7,9 +7,7 @@ import numpy as np
 import re
 import shutil
 
-# ============================================================
-# PAGE CONFIGURATION
-# ============================================================
+
 
 st.set_page_config(
     page_title="CircuitLens AI",
@@ -25,19 +23,13 @@ st.write(
     "components, values and connections."
 )
 
-# ============================================================
-# TESSERACT OCR SETUP
-# Works on Streamlit Cloud and local system
-# ============================================================
 
 tesseract_path = shutil.which("tesseract")
 
 if tesseract_path:
     pytesseract.pytesseract.tesseract_cmd = tesseract_path
 
-# ============================================================
-# OCR PREPROCESSING
-# ============================================================
+
 
 def prepare_ocr_images(image):
 
@@ -86,9 +78,7 @@ def prepare_ocr_images(image):
     ]
 
 
-# ============================================================
-# OCR
-# ============================================================
+
 
 def perform_ocr(images):
 
@@ -134,9 +124,6 @@ def perform_ocr(images):
     return detected_words
 
 
-# ============================================================
-# TEXT NORMALIZATION
-# ============================================================
 
 def normalize_text(text):
 
@@ -159,9 +146,7 @@ def normalize_text(text):
     return text
 
 
-# ============================================================
-# COMPONENT LABEL DETECTION
-# ============================================================
+
 
 def detect_labels(words):
 
@@ -261,9 +246,7 @@ def detect_labels(words):
     return components
 
 
-# ============================================================
-# ELECTRICAL VALUE DETECTION
-# ============================================================
+
 
 def detect_values(words):
 
@@ -323,10 +306,7 @@ def detect_values(words):
     )
 
 
-# ============================================================
-# WIRE DETECTION
-# SAFE VERSION
-# ============================================================
+
 
 def detect_wires(image):
 
@@ -413,9 +393,7 @@ def detect_wires(image):
     return horizontal, vertical
 
 
-# ============================================================
-# SHAPE ANALYSIS
-# ============================================================
+
 
 def analyze_shapes(image):
 
@@ -504,9 +482,7 @@ def analyze_shapes(image):
     }
 
 
-# ============================================================
-# RESISTANCE TO OHMS
-# ============================================================
+
 
 def resistance_to_ohms(value):
 
@@ -541,9 +517,7 @@ def resistance_to_ohms(value):
     return number
 
 
-# ============================================================
-# FILE UPLOAD
-# ============================================================
+
 
 uploaded_file = st.file_uploader(
     "📤 Upload Circuit Image",
@@ -555,16 +529,11 @@ uploaded_file = st.file_uploader(
 )
 
 
-# ============================================================
-# MAIN PROGRAM
-# ============================================================
+
 
 if uploaded_file:
 
-    # --------------------------------------------------------
-    # OPEN IMAGE
-    # --------------------------------------------------------
-
+   
     try:
 
         image = Image.open(
